@@ -24,7 +24,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.components.ActionFeedbackBanner
 import com.example.ui.components.GlassCard
+import com.example.ui.components.ProfileBackupDialog
 import com.example.ui.components.SectionHeader
+import com.example.ui.components.TrackManagerDialog
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.ClockViewModel
 import com.example.ui.viewmodel.SultanClockUiState
@@ -130,6 +132,30 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("PLAY TEST", fontWeight = FontWeight.Bold)
                     }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = viewModel.getTrackDisplayName(testTrackInput.toIntOrNull() ?: 1),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = EmeraldGreen
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // SD Card Track Catalog Button
+                OutlinedButton(
+                    onClick = { viewModel.openTrackManager(true) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = EmeraldGreen),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldGreen.copy(alpha = 0.5f))
+                ) {
+                    Icon(Icons.Default.LibraryMusic, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("SD Card Track Manager (কাস্টম ট্র্যাক নাম)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -352,7 +378,7 @@ fun SettingsScreen(
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
-                Divider(color = CardBorder)
+                HorizontalDivider(color = CardBorder)
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Web UI Password
@@ -499,6 +525,58 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(20.dp))
         }
 
+        // --- PROFILE BACKUP & RESTORE SECTION ---
+        item {
+            SectionHeader(
+                title = "PROFILE BACKUP & RESTORE",
+                icon = Icons.Default.CloudSync,
+                accentColor = AmberOrange
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            GlassCard(borderColor = AmberOrange.copy(alpha = 0.4f)) {
+                Text(
+                    text = "ক্লক সেটিংস ব্যাকআপ ও দ্রুত রিস্টোর",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+                Text(
+                    text = "সমস্ত অ্যালার্ম, ঘণ্টা চিম, আযান ও ডিসপ্লে কালার একটি প্রোফাইলে সেভ রাখুন এবং পরবর্তীতে এক ক্লিকে ক্লকে পাঠিয়ে দিন।",
+                    fontSize = 11.sp,
+                    color = TextSecondary
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "সংরক্ষিত প্রোফাইল: ${uiState.savedProfiles.size}টি",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = AmberOrange
+                    )
+
+                    Button(
+                        onClick = { viewModel.openProfileBackup(true) },
+                        colors = ButtonDefaults.buttonColors(containerColor = AmberOrange, contentColor = Color.Black),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Default.SettingsBackupRestore, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("ব্যাকআপ সেন্টার", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+        }
+
         // --- ABOUT SULTAN DIGITAL CLOCK ---
         item {
             SectionHeader(
@@ -524,7 +602,7 @@ fun SettingsScreen(
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
-                Divider(color = CardBorder)
+                HorizontalDivider(color = CardBorder)
                 Spacer(modifier = Modifier.height(12.dp))
 
                 AboutRow("Developer", "MD: SULTAN MAHAMUD")
@@ -539,6 +617,27 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(36.dp))
         }
+    }
+
+    // Dialogs
+    if (uiState.isTrackManagerOpen) {
+        TrackManagerDialog(
+            trackNames = uiState.trackNames,
+            onSaveTrackName = { num, name -> viewModel.saveTrackName(num, name) },
+            onResetDefaults = { viewModel.resetTrackNames() },
+            onTestTrack = { num -> viewModel.testDfTrack(num) },
+            onDismiss = { viewModel.openTrackManager(false) }
+        )
+    }
+
+    if (uiState.isProfileBackupOpen) {
+        ProfileBackupDialog(
+            savedProfiles = uiState.savedProfiles,
+            onSaveCurrentProfile = { name -> viewModel.saveCurrentProfile(name) },
+            onRestoreProfile = { profile -> viewModel.restoreProfile(profile) },
+            onDeleteProfile = { profileId -> viewModel.deleteProfile(profileId) },
+            onDismiss = { viewModel.openProfileBackup(false) }
+        )
     }
 }
 

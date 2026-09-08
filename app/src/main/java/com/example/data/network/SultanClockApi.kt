@@ -7,6 +7,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.*
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.asRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -76,18 +77,18 @@ open class Esp32Api {
         }
 
     /**
-     * Test connection and authentication
+     * Test connection and authentication using /checkauth with fallback to root /
      */
     suspend fun checkConnection(
         host: String,
         user: String = "admin",
         pass: String = ""
     ): Pair<ConnectionStatus, String> = withContext(Dispatchers.IO) {
-        val url = "${formatBaseUrl(host)}/"
+        val checkAuthUrl = "${formatBaseUrl(host)}/checkauth"
         try {
             val client = getClientWithAuth(user, pass)
             val request = Request.Builder()
-                .url(url)
+                .url(checkAuthUrl)
                 .addHeader("Authorization", Credentials.basic(user, pass))
                 .get()
                 .build()
@@ -96,11 +97,26 @@ open class Esp32Api {
                 when (response.code) {
                     200 -> ConnectionStatus.CONNECTED to "Connected successfully"
                     401 -> ConnectionStatus.AUTH_REQUIRED to "Authentication required (401)"
+                    404 -> {
+                        // Fallback to root / if /checkauth is not defined
+                        val rootReq = Request.Builder()
+                            .url("${formatBaseUrl(host)}/")
+                            .addHeader("Authorization", Credentials.basic(user, pass))
+                            .get()
+                            .build()
+                        client.newCall(rootReq).execute().use { rootResp ->
+                            when (rootResp.code) {
+                                200 -> ConnectionStatus.CONNECTED to "Connected successfully"
+                                401 -> ConnectionStatus.AUTH_REQUIRED to "Authentication required (401)"
+                                else -> ConnectionStatus.ERROR to "HTTP status: ${rootResp.code}"
+                            }
+                        }
+                    }
                     else -> ConnectionStatus.ERROR to "HTTP status: ${response.code}"
                 }
             }
         } catch (e: IOException) {
-            Log.w(TAG, "Connection failed to $url: ${e.message}")
+            Log.w(TAG, "Connection failed to $checkAuthUrl: ${e.message}")
             ConnectionStatus.DISCONNECTED to (e.localizedMessage ?: "ESP32 offline or unreachable")
         } catch (e: Exception) {
             ConnectionStatus.ERROR to (e.localizedMessage ?: "Connection error")
@@ -108,38 +124,57 @@ open class Esp32Api {
     }
 
     /**
-     * Fetch live clock status from /api/status returning real JSON with Basic Auth
+     * Fetch live clock status: tries /api/status first, falls back to parsing root / HTML
      */
     suspend fun getStatus(
         host: String,
         user: String = "admin",
         pass: String = ""
     ): ClockDashboardData = withContext(Dispatchers.IO) {
-        val url = "${formatBaseUrl(host)}/api/status"
+        val client = getClientWithAuth(user, pass)
+
+        // 1. Try /api/status first (if firmware provides JSON)
         try {
-            val client = getClientWithAuth(user, pass)
+            val apiUrl = "${formatBaseUrl(host)}/api/status"
             val request = Request.Builder()
-                .url(url)
+                .url(apiUrl)
                 .addHeader("Authorization", Credentials.basic(user, pass))
                 .get()
                 .build()
 
             client.newCall(request).execute().use { response ->
                 val body = response.body?.string() ?: ""
-                if (response.isSuccessful && body.isNotBlank()) {
-                    parseStatusJson(body, host)
+                if (response.isSuccessful && body.trim().startsWith("{")) {
+                    return@withContext parseStatusJson(body, host)
+                }
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "/api/status not available, falling back to root HTML: ${e.message}")
+        }
+
+        // 2. Fetch root / (Web UI HTML) and parse live telemetry
+        try {
+            val rootUrl = "${formatBaseUrl(host)}/"
+            val request = Request.Builder()
+                .url(rootUrl)
+                .addHeader("Authorization", Credentials.basic(user, pass))
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                val html = response.body?.string() ?: ""
+                if (response.isSuccessful && html.isNotBlank()) {
+                    return@withContext parseRootHtml(html, host)
                 } else if (response.code == 401) {
                     Log.w(TAG, "getStatus 401 Unauthorized for $host")
-                    ClockDashboardData(ipAddress = host)
-                } else {
-                    Log.w(TAG, "getStatus HTTP ${response.code} from $url")
-                    ClockDashboardData(ipAddress = host)
+                    return@withContext ClockDashboardData(ipAddress = host)
                 }
             }
         } catch (e: Exception) {
             Log.e(TAG, "getStatus error: ${e.message}")
-            ClockDashboardData(ipAddress = host)
         }
+
+        ClockDashboardData(ipAddress = host)
     }
 
     /**
@@ -296,6 +331,134 @@ open class Esp32Api {
             )
         } catch (e: Exception) {
             Log.w(TAG, "Failed to parse JSON status: ${e.message}")
+            ClockDashboardData(ipAddress = host)
+        }
+    }
+
+    /**
+     * Parse HTML returned by the ESP32 root (/) Web UI
+     * Extracts live clock telemetry, sensors, hardware status, and saved configs
+     */
+    fun parseRootHtml(html: String, host: String): ClockDashboardData {
+        return try {
+            fun extractRegex(pattern: String, default: String = ""): String {
+                val match = Regex(pattern, RegexOption.IGNORE_CASE).find(html)
+                return match?.groups?.get(1)?.value?.trim() ?: default
+            }
+
+            fun hasChecked(id: String): Boolean {
+                val pattern = "id=['\"]$id['\"][^>]*checked|checked[^>]*id=['\"]$id['\"]"
+                return Regex(pattern, RegexOption.IGNORE_CASE).containsMatchIn(html)
+            }
+
+            // 1. Live Time & Date
+            val rawTime = extractRegex("<div[^>]*class=['\"][^'\"]*time-main[^'\"]*['\"][^>]*>([^<]+)</div>", "12:00:00")
+            val rawDate = extractRegex("<div[^>]*class=['\"][^'\"]*time-date[^'\"]*['\"][^>]*>([^<]+)</div>", "")
+            val bangla = extractRegex("বাংলা:\\s*([0-9/]+|[^<\\s]+)").takeIf { it.isNotBlank() }
+
+            // 2. Hardware Switch States
+            val isDisplayOn = extractRegex("id=['\"]displaystatus['\"][^>]*class=['\"]status-([a-zA-Z]+)['\"]", "on").equals("on", ignoreCase = true)
+            val isLightOn = extractRegex("id=['\"]lightstatus['\"][^>]*class=['\"]status-([a-zA-Z]+)['\"]", "off").equals("on", ignoreCase = true)
+            val isTempSensorOn = extractRegex("id=['\"]tempstatus['\"][^>]*class=['\"]status-([a-zA-Z]+)['\"]", "on").equals("on", ignoreCase = true)
+            val tempVal = extractRegex("([0-9.]+)\\s*&deg;C", "28.5").toFloatOrNull() ?: 28.5f
+            val isPrayerAlarmOn = extractRegex("id=['\"]prayerstatus['\"][^>]*class=['\"]status-([a-zA-Z]+)['\"]", "on").equals("on", ignoreCase = true)
+
+            // 3. Prayer Times
+            val fajrTime = extractRegex("Fajr<br>([0-9:]+)", "04:12")
+            val sunriseTime = extractRegex("Sunrise<br>([0-9:]+)", "05:28")
+            val dhuhrTime = extractRegex("Dhuhr<br>([0-9:]+)", "12:05")
+            val asrTime = extractRegex("Asr<br>([0-9:]+)", "16:35")
+            val maghribTime = extractRegex("Maghrib<br>([0-9:]+)", "18:32")
+            val ishaTime = extractRegex("Isha<br>([0-9:]+)", "19:48")
+            val prayerTimes = PrayerTimes(
+                fajr = fajrTime,
+                sunrise = sunriseTime,
+                dhuhr = dhuhrTime,
+                asr = asrTime,
+                maghrib = maghribTime,
+                isha = ishaTime,
+                isAzanAlarmEnabled = isPrayerAlarmOn
+            )
+
+            // 4. DFPlayer & Audio
+            val dfConnected = html.contains("DFPlayer Mini ready", ignoreCase = true)
+            val dfVol = extractRegex("id=['\"]dfvol['\"][^>]*value=['\"]([0-9]+)['\"]", "22").toIntOrNull() ?: 22
+            val hourlyChimeEnabled = hasChecked("hourlybeep2") || hasChecked("hourlybeep")
+            val hourlyChimeMode = extractRegex("value=['\"]([0-3])['\"][^>]*name=['\"]hmode['\"][^>]*checked|name=['\"]hmode['\"][^>]*value=['\"]([0-3])['\"][^>]*checked", "0").toIntOrNull() ?: 0
+
+            // 5. Brightness & LDR Telemetry
+            val autoLdr = hasChecked("autoldr")
+            val ldrRaw = extractRegex("Live LDR Raw:\\s*<strong>([0-9]+)</strong>", "450").toIntOrNull() ?: 450
+            val appliedBrightness = extractRegex("Applied Brightness:\\s*<strong>([0-9]+)</strong>", "128").toIntOrNull()
+                ?: extractRegex("id=['\"]bright['\"][^>]*value=['\"]([0-9]+)['\"]", "128").toIntOrNull() ?: 128
+
+            // 6. Color Mode & Playlist
+            val colorMode = extractRegex("<select[^>]*id=['\"]colormode['\"][^>]*>.*?<option value=['\"]([0-4])['\"]\\s*selected", "0").toIntOrNull() ?: 0
+            val playlistOn = extractRegex("id=['\"]plstatus['\"][^>]*class=['\"]status-([a-zA-Z]+)['\"]", "off").equals("on", ignoreCase = true)
+
+            // 7. Network Status
+            val wifiSsid = extractRegex("Connected:\\s*<strong>(.*?)</strong>", extractRegex("id=['\"]wifissid['\"][^>]*value=['\"](.*?)['\"]", ""))
+            val ipAddress = extractRegex("IP:\\s*([0-9.]+)", host)
+            val isWifiConn = wifiSsid.isNotBlank() && !html.contains("Wi-Fi disconnected", ignoreCase = true)
+            val isApMode = html.contains("SoftAP", ignoreCase = true) || host.contains("192.168.4.1")
+
+            // 8. 12/24 Hour format
+            val is12Hour = hasChecked("fmt12")
+
+            // 9. Dual Alarms
+            val a0Time = extractRegex("id=['\"]alarm0['\"][^>]*value=['\"]([0-9:]+)['\"]", "06:30").split(":")
+            val a0H = a0Time.getOrNull(0)?.toIntOrNull() ?: 6
+            val a0M = a0Time.getOrNull(1)?.toIntOrNull() ?: 30
+            val a0En = hasChecked("en0")
+            val a0Track = extractRegex("id=['\"]al0['\"][^>]*value=['\"]([0-9]+)['\"]", "1").toIntOrNull() ?: 1
+
+            val a1Time = extractRegex("id=['\"]alarm1['\"][^>]*value=['\"]([0-9:]+)['\"]", "18:30").split(":")
+            val a1H = a1Time.getOrNull(0)?.toIntOrNull() ?: 18
+            val a1M = a1Time.getOrNull(1)?.toIntOrNull() ?: 30
+            val a1En = hasChecked("en1")
+            val a1Track = extractRegex("id=['\"]al1['\"][^>]*value=['\"]([0-9]+)['\"]", "2").toIntOrNull() ?: 2
+
+            val alarms = listOf(
+                ClockAlarmStatus(hour = a0H, minute = a0M, enabled = a0En, track = a0Track),
+                ClockAlarmStatus(hour = a1H, minute = a1M, enabled = a1En, track = a1Track)
+            )
+
+            // 10. Azan Tracks
+            val azanTracks = (0..4).map { i ->
+                extractRegex("id=['\"]az$i['\"][^>]*value=['\"]([0-9]+)['\"]", "${i + 1}").toIntOrNull() ?: (i + 1)
+            }
+
+            ClockDashboardData(
+                currentTimeStr = rawTime,
+                currentDateStr = rawDate,
+                banglaDate = bangla,
+                temperatureC = tempVal,
+                is12Hour = is12Hour,
+                isDisplayOn = isDisplayOn,
+                isLightOn = isLightOn,
+                isPrayerAlarmOn = isPrayerAlarmOn,
+                isTempSensorOn = isTempSensorOn,
+                ldrRaw = ldrRaw,
+                appliedBrightness = appliedBrightness,
+                autoLdr = autoLdr,
+                colorMode = colorMode,
+                playlistEnabled = playlistOn,
+                hourlyChimeEnabled = hourlyChimeEnabled,
+                hourlyChimeMode = hourlyChimeMode,
+                dfConnected = dfConnected,
+                dfVolume = dfVol,
+                wifiConnected = isWifiConn,
+                apMode = isApMode,
+                wifiSsid = wifiSsid,
+                ipAddress = ipAddress,
+                connectionType = if (isApMode) "Clock Hotspot (AP)" else if (isWifiConn) "Wi-Fi LAN" else "Disconnected",
+                firmwareVersion = "v5.0-ESP32",
+                prayerTimes = prayerTimes,
+                azanTrack = azanTracks,
+                alarms = alarms
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse HTML status: ${e.message}")
             ClockDashboardData(ipAddress = host)
         }
     }
@@ -539,7 +702,7 @@ open class Esp32Api {
         return sendGet(host, "/savetonerange", params, user, pass)
     }
 
-    // 11. Azan & Alarm Track Assignments
+    // 11. Azan & Alarm Track Assignments and Waqt Toggles
     suspend fun saveTrackAssignments(
         host: String,
         config: TrackAssignmentsConfig,
@@ -547,15 +710,65 @@ open class Esp32Api {
         pass: String
     ): ActionResponse {
         val params = mapOf(
-            "az0" to config.fajrTrack.toString(), "aze0" to if (config.fajrEnabled) "1" else "0",
-            "az1" to config.dhuhrTrack.toString(), "aze1" to if (config.dhuhrEnabled) "1" else "0",
-            "az2" to config.asrTrack.toString(), "aze2" to if (config.asrEnabled) "1" else "0",
-            "az3" to config.maghribTrack.toString(), "aze3" to if (config.maghribEnabled) "1" else "0",
-            "az4" to config.ishaTrack.toString(), "aze4" to if (config.ishaEnabled) "1" else "0",
+            "az0" to config.fajrTrack.toString(),
+            "az1" to config.dhuhrTrack.toString(),
+            "az2" to config.asrTrack.toString(),
+            "az3" to config.maghribTrack.toString(),
+            "az4" to config.ishaTrack.toString(),
             "al0" to config.alarm1Track.toString(),
             "al1" to config.alarm2Track.toString()
         )
-        return sendGet(host, "/savetracks", params, user, pass)
+        val trackRes = sendGet(host, "/savetracks", params, user, pass)
+        if (!trackRes.isSuccess) return trackRes
+
+        return saveWaqtAzan(
+            host = host,
+            fajr = config.fajrEnabled,
+            dhuhr = config.dhuhrEnabled,
+            asr = config.asrEnabled,
+            maghrib = config.maghribEnabled,
+            isha = config.ishaEnabled,
+            user = user,
+            pass = pass
+        )
+    }
+
+    suspend fun saveWaqtAzan(
+        host: String,
+        fajr: Boolean,
+        dhuhr: Boolean,
+        asr: Boolean,
+        maghrib: Boolean,
+        isha: Boolean,
+        user: String,
+        pass: String
+    ): ActionResponse {
+        val params = mapOf(
+            "fajr" to if (fajr) "1" else "0",
+            "dhuhr" to if (dhuhr) "1" else "0",
+            "asr" to if (asr) "1" else "0",
+            "maghrib" to if (maghrib) "1" else "0",
+            "isha" to if (isha) "1" else "0"
+        )
+        return sendGet(host, "/savewaqtazan", params, user, pass)
+    }
+
+    suspend fun saveDisplaySettings(
+        host: String,
+        is12Hour: Boolean,
+        showDate: Boolean,
+        colonBlink: Boolean,
+        hourlyBeep: Boolean,
+        user: String,
+        pass: String
+    ): ActionResponse {
+        val params = mapOf(
+            "f" to if (is12Hour) "1" else "0",
+            "sd" to if (showDate) "1" else "0",
+            "cb" to if (colonBlink) "1" else "0",
+            "hb" to if (hourlyBeep) "1" else "0"
+        )
+        return sendGet(host, "/savesettings", params, user, pass)
     }
 
     // 12. Weekly Playlist (Slots 0 and 1, Sunday to Saturday t0..t6)
@@ -705,7 +918,7 @@ open class Esp32Api {
                 .writeTimeout(60, TimeUnit.SECONDS)
                 .build()
 
-            val fileBody = RequestBody.create("application/octet-stream".toMediaTypeOrNull(), binFile)
+            val fileBody = binFile.asRequestBody("application/octet-stream".toMediaTypeOrNull())
             val multipartBody = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
                 .addFormDataPart("update", binFile.name, fileBody)

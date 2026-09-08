@@ -24,6 +24,7 @@ import com.example.data.model.WeeklyPlaylistSlot
 import com.example.ui.components.ActionFeedbackBanner
 import com.example.ui.components.GlassCard
 import com.example.ui.components.SectionHeader
+import com.example.ui.components.TrackManagerDialog
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.ClockViewModel
 import com.example.ui.viewmodel.SultanClockUiState
@@ -46,6 +47,64 @@ fun ScheduleScreen(
             Spacer(modifier = Modifier.height(14.dp))
             ActionFeedbackBanner(feedback = uiState.feedback)
             Spacer(modifier = Modifier.height(8.dp))
+
+            // SD Card Track Catalog Quick Action Card
+            Surface(
+                onClick = { viewModel.openTrackManager(true) },
+                shape = RoundedCornerShape(16.dp),
+                color = CardBackground,
+                border = androidx.compose.foundation.BorderStroke(1.dp, PrimaryGreen.copy(alpha = 0.5f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(androidx.compose.foundation.shape.CircleShape)
+                                .background(PrimaryGreen.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.LibraryMusic,
+                                contentDescription = null,
+                                tint = EmeraldGreen,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "DFPlayer SD Card Track Manager",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = "কাস্টম ট্র্যাক নাম ও অডিও ক্যাটালগ এডিট করুন",
+                                fontSize = 11.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = EmeraldGreen
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
         }
 
         // --- DUAL ALARMS SECTION ---
@@ -123,8 +182,35 @@ fun ScheduleScreen(
                     )
                 }
 
+                // Show Friendly Track Name
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = viewModel.getTrackDisplayName(uiState.alarmConfig.alarm1Track),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = EmeraldGreen
+                    )
+                    IconButton(
+                        onClick = { viewModel.testDfTrack(uiState.alarmConfig.alarm1Track) },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.VolumeUp,
+                            contentDescription = "Test Play",
+                            tint = EmeraldGreen,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
-                Divider(color = CardBorder)
+                HorizontalDivider(color = CardBorder)
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Alarm 2
@@ -189,6 +275,33 @@ fun ScheduleScreen(
                         modifier = Modifier.weight(1f),
                         singleLine = true
                     )
+                }
+
+                // Show Friendly Track Name
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = viewModel.getTrackDisplayName(uiState.alarmConfig.alarm2Track),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = CyanAccent
+                    )
+                    IconButton(
+                        onClick = { viewModel.testDfTrack(uiState.alarmConfig.alarm2Track) },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.VolumeUp,
+                            contentDescription = "Test Play",
+                            tint = CyanAccent,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -322,6 +435,31 @@ fun ScheduleScreen(
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = viewModel.getTrackDisplayName(uiState.hourlyChime.fixedTrack),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = EmeraldGreen
+                        )
+                        IconButton(
+                            onClick = { viewModel.testDfTrack(uiState.hourlyChime.fixedTrack) },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.VolumeUp,
+                                contentDescription = "Test Play",
+                                tint = EmeraldGreen,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -375,41 +513,51 @@ fun ScheduleScreen(
                 PrayerTrackRow(
                     prayerName = "Fajr Azan",
                     track = uiState.trackAssignments.fajrTrack,
+                    trackName = viewModel.getTrackDisplayName(uiState.trackAssignments.fajrTrack),
                     enabled = uiState.trackAssignments.fajrEnabled,
                     onTrackChange = { viewModel.updateTrackAssignments(uiState.trackAssignments.copy(fajrTrack = it)) },
-                    onEnabledChange = { viewModel.updateTrackAssignments(uiState.trackAssignments.copy(fajrEnabled = it)) }
+                    onEnabledChange = { viewModel.updateTrackAssignments(uiState.trackAssignments.copy(fajrEnabled = it)) },
+                    onTestPlay = { viewModel.testDfTrack(uiState.trackAssignments.fajrTrack) }
                 )
 
                 PrayerTrackRow(
                     prayerName = "Dhuhr Azan",
                     track = uiState.trackAssignments.dhuhrTrack,
+                    trackName = viewModel.getTrackDisplayName(uiState.trackAssignments.dhuhrTrack),
                     enabled = uiState.trackAssignments.dhuhrEnabled,
                     onTrackChange = { viewModel.updateTrackAssignments(uiState.trackAssignments.copy(dhuhrTrack = it)) },
-                    onEnabledChange = { viewModel.updateTrackAssignments(uiState.trackAssignments.copy(dhuhrEnabled = it)) }
+                    onEnabledChange = { viewModel.updateTrackAssignments(uiState.trackAssignments.copy(dhuhrEnabled = it)) },
+                    onTestPlay = { viewModel.testDfTrack(uiState.trackAssignments.dhuhrTrack) }
                 )
 
                 PrayerTrackRow(
                     prayerName = "Asr Azan",
                     track = uiState.trackAssignments.asrTrack,
+                    trackName = viewModel.getTrackDisplayName(uiState.trackAssignments.asrTrack),
                     enabled = uiState.trackAssignments.asrEnabled,
                     onTrackChange = { viewModel.updateTrackAssignments(uiState.trackAssignments.copy(asrTrack = it)) },
-                    onEnabledChange = { viewModel.updateTrackAssignments(uiState.trackAssignments.copy(asrEnabled = it)) }
+                    onEnabledChange = { viewModel.updateTrackAssignments(uiState.trackAssignments.copy(asrEnabled = it)) },
+                    onTestPlay = { viewModel.testDfTrack(uiState.trackAssignments.asrTrack) }
                 )
 
                 PrayerTrackRow(
                     prayerName = "Maghrib Azan",
                     track = uiState.trackAssignments.maghribTrack,
+                    trackName = viewModel.getTrackDisplayName(uiState.trackAssignments.maghribTrack),
                     enabled = uiState.trackAssignments.maghribEnabled,
                     onTrackChange = { viewModel.updateTrackAssignments(uiState.trackAssignments.copy(maghribTrack = it)) },
-                    onEnabledChange = { viewModel.updateTrackAssignments(uiState.trackAssignments.copy(maghribEnabled = it)) }
+                    onEnabledChange = { viewModel.updateTrackAssignments(uiState.trackAssignments.copy(maghribEnabled = it)) },
+                    onTestPlay = { viewModel.testDfTrack(uiState.trackAssignments.maghribTrack) }
                 )
 
                 PrayerTrackRow(
                     prayerName = "Isha Azan",
                     track = uiState.trackAssignments.ishaTrack,
+                    trackName = viewModel.getTrackDisplayName(uiState.trackAssignments.ishaTrack),
                     enabled = uiState.trackAssignments.ishaEnabled,
                     onTrackChange = { viewModel.updateTrackAssignments(uiState.trackAssignments.copy(ishaTrack = it)) },
-                    onEnabledChange = { viewModel.updateTrackAssignments(uiState.trackAssignments.copy(ishaEnabled = it)) }
+                    onEnabledChange = { viewModel.updateTrackAssignments(uiState.trackAssignments.copy(ishaEnabled = it)) },
+                    onTestPlay = { viewModel.testDfTrack(uiState.trackAssignments.ishaTrack) }
                 )
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -484,43 +632,81 @@ fun ScheduleScreen(
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
+
+    if (uiState.isTrackManagerOpen) {
+        TrackManagerDialog(
+            trackNames = uiState.trackNames,
+            onSaveTrackName = { num, name -> viewModel.saveTrackName(num, name) },
+            onResetDefaults = { viewModel.resetTrackNames() },
+            onTestTrack = { num -> viewModel.testDfTrack(num) },
+            onDismiss = { viewModel.openTrackManager(false) }
+        )
+    }
 }
 
 @Composable
 private fun PrayerTrackRow(
     prayerName: String,
     track: Int,
+    trackName: String? = null,
     enabled: Boolean,
     onTrackChange: (Int) -> Unit,
-    onEnabledChange: (Boolean) -> Unit
+    onEnabledChange: (Boolean) -> Unit,
+    onTestPlay: () -> Unit = {}
 ) {
-    Row(
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = CardBackgroundElevated,
+        border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+            .padding(vertical = 4.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(
-                checked = enabled,
-                onCheckedChange = onEnabledChange,
-                colors = CheckboxDefaults.colors(checkedColor = SuccessGreen)
-            )
-            Text(prayerName, fontSize = 13.sp, color = TextPrimary)
-        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                Checkbox(
+                    checked = enabled,
+                    onCheckedChange = onEnabledChange,
+                    colors = CheckboxDefaults.colors(checkedColor = SuccessGreen)
+                )
+                Column {
+                    Text(prayerName, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    trackName?.let {
+                        Text(it, fontSize = 11.sp, color = EmeraldGreen)
+                    }
+                }
+            }
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Track #", fontSize = 11.sp, color = TextSecondary)
-            Spacer(modifier = Modifier.width(6.dp))
-            OutlinedTextField(
-                value = track.toString(),
-                onValueChange = {
-                    it.toIntOrNull()?.let { t -> onTrackChange(t.coerceIn(1, 255)) }
-                },
-                modifier = Modifier.width(70.dp),
-                singleLine = true
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = track.toString(),
+                    onValueChange = {
+                        it.toIntOrNull()?.let { t -> onTrackChange(t.coerceIn(1, 255)) }
+                    },
+                    modifier = Modifier.width(62.dp),
+                    singleLine = true
+                )
+                IconButton(
+                    onClick = onTestPlay,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.VolumeUp,
+                        contentDescription = "Test Play",
+                        tint = SuccessGreen,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
         }
     }
 }

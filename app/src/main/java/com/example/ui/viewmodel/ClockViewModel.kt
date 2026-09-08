@@ -72,7 +72,15 @@ data class SultanClockUiState(
     val selectedOtaFileName: String? = null,
     
     // Action Feedback
-    val feedback: ActionFeedback = ActionFeedback()
+    val feedback: ActionFeedback = ActionFeedback(),
+
+    // DFPlayer Track Catalog & Custom Names
+    val trackNames: Map<Int, String> = DevicePreferences.DEFAULT_TRACK_NAMES,
+    val isTrackManagerOpen: Boolean = false,
+
+    // Configuration Profile Backups
+    val savedProfiles: List<ClockProfileBackup> = emptyList(),
+    val isProfileBackupOpen: Boolean = false
 )
 
 class ClockViewModel(application: Application) : AndroidViewModel(application) {
@@ -88,7 +96,9 @@ class ClockViewModel(application: Application) : AndroidViewModel(application) {
             rememberPassword = prefs.rememberPassword,
             autoConnect = prefs.autoConnect,
             manualIpInput = prefs.ipAddress,
-            savedIps = prefs.getSavedIps()
+            savedIps = prefs.getSavedIps(),
+            trackNames = prefs.getTrackNames(),
+            savedProfiles = prefs.getSavedProfiles()
         )
     )
     val uiState: StateFlow<SultanClockUiState> = _uiState.asStateFlow()
@@ -862,6 +872,195 @@ class ClockViewModel(application: Application) : AndroidViewModel(application) {
                             actionName = "OTA Update",
                             isSuccess = false,
                             message = e.localizedMessage ?: "Failed to upload firmware",
+                            timestamp = System.currentTimeMillis()
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    // --- ONE-TAP COLOR PRESETS ---
+
+    fun applyColorPreset(preset: ColorPreset) {
+        viewModelScope.launch {
+            val updatedConfig = _uiState.value.colorConfig.copy(
+                mode = preset.mode,
+                red = preset.red,
+                green = preset.green,
+                blue = preset.blue
+            )
+            _uiState.update { it.copy(colorConfig = updatedConfig) }
+
+            executeAction("${preset.nameBn} প্রিসেট") {
+                // Apply color config
+                val colorRes = api.saveColor(
+                    _uiState.value.activeHost,
+                    updatedConfig,
+                    _uiState.value.username,
+                    _uiState.value.passwordInput
+                )
+                // If preset defines specific brightness (e.g. Night Mode), apply it as well
+                if (preset.brightness != null) {
+                    val brightConfig = _uiState.value.brightnessConfig.copy(
+                        manualBrightness = preset.brightness,
+                        autoLdr = false
+                    )
+                    _uiState.update { it.copy(brightnessConfig = brightConfig) }
+                    api.saveBrightness(
+                        _uiState.value.activeHost,
+                        brightConfig,
+                        _uiState.value.username,
+                        _uiState.value.passwordInput
+                    )
+                }
+                colorRes
+            }
+        }
+    }
+
+    // --- DFPLAYER SD CARD TRACK MANAGER ---
+
+    fun openTrackManager(open: Boolean) {
+        _uiState.update { it.copy(isTrackManagerOpen = open) }
+    }
+
+    fun saveTrackName(trackNumber: Int, name: String) {
+        prefs.saveTrackName(trackNumber, name)
+        _uiState.update { it.copy(trackNames = prefs.getTrackNames()) }
+    }
+
+    fun resetTrackNames() {
+        prefs.resetTrackNamesToDefault()
+        _uiState.update { it.copy(trackNames = prefs.getTrackNames()) }
+    }
+
+    fun getTrackDisplayName(trackNumber: Int): String {
+        val custom = _uiState.value.trackNames[trackNumber]
+        return if (!custom.isNullOrBlank()) "Track $trackNumber: $custom" else "Track $trackNumber"
+    }
+
+    // --- CONFIGURATION PROFILE BACKUP & RESTORE ---
+
+    fun openProfileBackup(open: Boolean) {
+        _uiState.update { it.copy(isProfileBackupOpen = open) }
+    }
+
+    fun saveCurrentProfile(name: String) {
+        val sdf = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault())
+        val profile = ClockProfileBackup(
+            id = "profile_${System.currentTimeMillis()}",
+            name = name,
+            createdAt = sdf.format(Date()),
+            alarms = _uiState.value.alarmConfig,
+            hourlyChime = _uiState.value.hourlyChime,
+            trackAssignments = _uiState.value.trackAssignments,
+            brightness = _uiState.value.brightnessConfig,
+            color = _uiState.value.colorConfig,
+            displaySchedule = _uiState.value.displaySchedule,
+            is12Hour = _uiState.value.dateSettings.dateFormat == 0,
+            showDate = _uiState.value.dateSettings.isDateEnabled,
+            trackNames = _uiState.value.trackNames.mapKeys { it.key.toString() }
+        )
+        prefs.saveProfile(profile)
+        _uiState.update {
+            it.copy(
+                savedProfiles = prefs.getSavedProfiles(),
+                feedback = ActionFeedback(
+                    isSuccess = true,
+                    actionName = "Profile Backup",
+                    message = "'$name' ব্যাকআপ সংরক্ষিত হয়েছে",
+                    timestamp = System.currentTimeMillis()
+                )
+            )
+        }
+    }
+
+    fun deleteProfile(profileId: String) {
+        prefs.deleteProfile(profileId)
+        _uiState.update { it.copy(savedProfiles = prefs.getSavedProfiles()) }
+    }
+
+    fun restoreProfile(profile: ClockProfileBackup) {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    alarmConfig = profile.alarms,
+                    hourlyChime = profile.hourlyChime,
+                    trackAssignments = profile.trackAssignments,
+                    brightnessConfig = profile.brightness,
+                    colorConfig = profile.color,
+                    displaySchedule = profile.displaySchedule,
+                    feedback = ActionFeedback(
+                        inProgress = true,
+                        actionName = "Restore Profile",
+                        message = "প্রোফাইল '${profile.name}' ক্লকে পাঠানো হচ্ছে...",
+                        timestamp = System.currentTimeMillis()
+                    )
+                )
+            }
+
+            val host = _uiState.value.activeHost
+            val user = _uiState.value.username
+            val pass = _uiState.value.passwordInput
+
+            try {
+                // 1. Send Color & Brightness
+                api.saveColor(host, profile.color, user, pass)
+                api.saveBrightness(host, profile.brightness, user, pass)
+
+                // 2. Send Alarms
+                api.saveAlarm(host, profile.alarms, user, pass)
+
+                // 3. Send Hourly Chime
+                api.saveHourlyMode(
+                    host = host,
+                    config = profile.hourlyChime,
+                    user = user,
+                    pass = pass
+                )
+                api.saveToneRange(
+                    host = host,
+                    enabled = profile.hourlyChime.enabled,
+                    startHour = profile.hourlyChime.startHour,
+                    endHour = profile.hourlyChime.endHour,
+                    user = user,
+                    pass = pass
+                )
+
+                // 4. Send Track Assignments
+                api.saveTrackAssignments(host, profile.trackAssignments, user, pass)
+
+                // 5. Send Display Settings
+                api.saveDisplaySettings(
+                    host = host,
+                    is12Hour = profile.is12Hour,
+                    showDate = profile.showDate,
+                    colonBlink = profile.colonBlink,
+                    hourlyBeep = profile.hourlyChime.enabled,
+                    user = user,
+                    pass = pass
+                )
+
+                _uiState.update {
+                    it.copy(
+                        feedback = ActionFeedback(
+                            inProgress = false,
+                            actionName = "Restore Profile",
+                            isSuccess = true,
+                            message = "'${profile.name}' সফলভাবে ক্লকে রিস্টোর হয়েছে!",
+                            timestamp = System.currentTimeMillis()
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        feedback = ActionFeedback(
+                            inProgress = false,
+                            actionName = "Restore Profile",
+                            isSuccess = false,
+                            message = "রিস্টোর ব্যর্থ: ${e.localizedMessage}",
                             timestamp = System.currentTimeMillis()
                         )
                     )

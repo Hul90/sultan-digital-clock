@@ -23,6 +23,14 @@ val SuccessGreen = Color(0xFF00E676)
 val WarningOrange = Color(0xFFFF9100)
 val ErrorRed = Color(0xFFFF5252)
 
+// Theme Aliases
+val EmeraldGreen = Color(0xFF00E676)
+val PrimaryGreen = Color(0xFF10B981)
+val NeonGold = Color(0xFFFFC837)
+val AmberOrange = Color(0xFFFF9100)
+val NeutralMuted = Color(0xFF5A6680)
+val SurfaceDark = Color(0xFF101422)
+
 // Text & Surfaces
 val TextPrimary = Color(0xFFF0F4FC)
 val TextSecondary = Color(0xFF8E9BB5)

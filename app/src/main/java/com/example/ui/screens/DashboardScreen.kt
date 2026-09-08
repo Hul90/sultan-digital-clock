@@ -65,7 +65,20 @@ fun DashboardScreen(
             Spacer(modifier = Modifier.height(12.dp))
         }
 
-        // Live Main Digital Clock Card
+        // Live Virtual LED Clock Simulator (Live Mirroring)
+        item {
+            VirtualLedClockMirror(
+                dashboardData = uiState.dashboard,
+                colorConfig = uiState.colorConfig,
+                onToggleDisplay = { viewModel.toggleDisplay() },
+                onApplyPreset = { viewModel.applyColorPreset(it) },
+                modifier = Modifier.testTag("virtual_led_clock_mirror")
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+        }
+
+        // Live Main Digital Clock Card & Controls
         item {
             DigitalClockCard(
                 data = uiState.dashboard,
@@ -75,7 +88,103 @@ fun DashboardScreen(
                 modifier = Modifier.testTag("live_clock_card")
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Smart Tools Row (Track Manager & Backup Restore)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Surface(
+                    onClick = { viewModel.openTrackManager(true) },
+                    shape = RoundedCornerShape(14.dp),
+                    color = CardBackground,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, PrimaryGreen.copy(alpha = 0.5f)),
+                    modifier = Modifier.weight(1f).height(62.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(androidx.compose.foundation.shape.CircleShape)
+                                .background(PrimaryGreen.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.LibraryMusic,
+                                contentDescription = null,
+                                tint = EmeraldGreen,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "Track Manager",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = "SD কার্ড অডিও নাম",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = EmeraldGreen
+                            )
+                        }
+                    }
+                }
+
+                Surface(
+                    onClick = { viewModel.openProfileBackup(true) },
+                    shape = RoundedCornerShape(14.dp),
+                    color = CardBackground,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, AmberOrange.copy(alpha = 0.5f)),
+                    modifier = Modifier.weight(1f).height(62.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(androidx.compose.foundation.shape.CircleShape)
+                                .background(AmberOrange.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CloudSync,
+                                contentDescription = null,
+                                tint = AmberOrange,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "Backup Profile",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = "সেটিংস ব্যাকআপ",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = AmberOrange
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
         }
 
         // Quick Controls Section
@@ -296,6 +405,28 @@ fun DashboardScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
         }
+    }
+
+    // DFPlayer SD Card Track Manager Dialog
+    if (uiState.isTrackManagerOpen) {
+        TrackManagerDialog(
+            trackNames = uiState.trackNames,
+            onSaveTrackName = { trackNum, name -> viewModel.saveTrackName(trackNum, name) },
+            onResetDefaults = { viewModel.resetTrackNames() },
+            onTestTrack = { trackNum -> viewModel.testDfTrack(trackNum) },
+            onDismiss = { viewModel.openTrackManager(false) }
+        )
+    }
+
+    // Profile Backup & Restore Dialog
+    if (uiState.isProfileBackupOpen) {
+        ProfileBackupDialog(
+            savedProfiles = uiState.savedProfiles,
+            onSaveCurrentProfile = { name -> viewModel.saveCurrentProfile(name) },
+            onRestoreProfile = { profile -> viewModel.restoreProfile(profile) },
+            onDeleteProfile = { profileId -> viewModel.deleteProfile(profileId) },
+            onDismiss = { viewModel.openProfileBackup(false) }
+        )
     }
 }
 

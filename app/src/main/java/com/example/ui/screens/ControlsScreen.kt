@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.ColorConfig
+import com.example.data.model.ColorPreset
 import com.example.ui.components.ActionFeedbackBanner
 import com.example.ui.components.GlassCard
 import com.example.ui.components.SectionHeader
@@ -243,17 +244,59 @@ fun ControlsScreen(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 // Presets Row
-                Text("Color Presets:", fontSize = 12.sp, color = TextSecondary)
-                Spacer(modifier = Modifier.height(6.dp))
-                Row(
+                Text("One-Tap Theme Presets (রেডিমেড থিম):", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    ColorPresetChip("Gold", Color(255, 200, 50)) { viewModel.updateRgb(255, 200, 50) }
-                    ColorPresetChip("Cyan", Color(0, 242, 254)) { viewModel.updateRgb(0, 242, 254) }
-                    ColorPresetChip("Ruby", Color(255, 40, 70)) { viewModel.updateRgb(255, 40, 70) }
-                    ColorPresetChip("Emerald", Color(0, 230, 118)) { viewModel.updateRgb(0, 230, 118) }
-                    ColorPresetChip("Violet", Color(180, 80, 255)) { viewModel.updateRgb(180, 80, 255) }
+                    ColorPreset.PRESETS.chunked(2).forEach { rowPresets ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            rowPresets.forEach { preset ->
+                                val presetColor = Color(preset.red, preset.green, preset.blue)
+                                Surface(
+                                    onClick = { viewModel.applyColorPreset(preset) },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = CardBackgroundElevated,
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(28.dp)
+                                                .clip(CircleShape)
+                                                .background(presetColor)
+                                                .border(1.dp, Color.White.copy(alpha = 0.3f), CircleShape)
+                                        )
+                                        Column {
+                                            Text(
+                                                text = preset.nameBn,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = TextPrimary
+                                            )
+                                            Text(
+                                                text = preset.nameEn,
+                                                fontSize = 9.sp,
+                                                color = TextSecondary
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))

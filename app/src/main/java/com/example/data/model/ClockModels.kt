@@ -213,3 +213,110 @@ data class ActionResponse(
     val message: String,
     val rawResponse: String? = null
 )
+
+data class TrackInfo(
+    val trackNumber: Int,
+    val name: String,
+    val category: String = "General"
+)
+
+data class ColorPreset(
+    val id: String,
+    val nameBn: String,
+    val nameEn: String,
+    val description: String,
+    val mode: Int, // 0: Static, 1: Fade, 2: Rainbow, 3: Custom RGB, 4: Sweep
+    val red: Int,
+    val green: Int,
+    val blue: Int,
+    val brightness: Int? = null,
+    val previewHex: Long
+) {
+    companion object {
+        val PRESETS = listOf(
+            ColorPreset(
+                id = "islamic_emerald",
+                nameBn = "ইসলামিক মোড",
+                nameEn = "Islamic Emerald",
+                description = "শান্ত ও মনোরম ডিপ এমারেল্ড গ্রিন",
+                mode = 0,
+                red = 0,
+                green = 230,
+                blue = 118,
+                previewHex = 0xFF00E676
+            ),
+            ColorPreset(
+                id = "royal_sultan",
+                nameBn = "রয়েল সুলতান",
+                nameEn = "Royal Sultan Gold",
+                description = "উজ্জ্বল প্রিমিয়াম গোল্ডেন গ্লো",
+                mode = 0,
+                red = 255,
+                green = 215,
+                blue = 0,
+                previewHex = 0xFFFFD700
+            ),
+            ColorPreset(
+                id = "night_amber",
+                nameBn = "নাইট মোড",
+                nameEn = "Cozy Warm Amber",
+                description = "চোখের জন্য আরামদায়ক হালকা মোমবাতি অ্যাম্বার",
+                mode = 0,
+                red = 255,
+                green = 140,
+                blue = 0,
+                brightness = 35,
+                previewHex = 0xFFFF8F00
+            ),
+            ColorPreset(
+                id = "cyberpunk_neon",
+                nameBn = "সাইবারপাঙ্ক",
+                nameEn = "Cyberpunk Neon",
+                description = "নিয়ন সায়ান ও পিংক ডায়নামিক ভাইব",
+                mode = 2,
+                red = 0,
+                green = 229,
+                blue = 255,
+                previewHex = 0xFF00E5FF
+            ),
+            ColorPreset(
+                id = "ocean_breeze",
+                nameBn = "ওশান ব্রিজ",
+                nameEn = "Ocean Breeze",
+                description = "শান্ত স্নিগ্ধ সমুদ্রের অ্যাকোয়া ব্লু",
+                mode = 0,
+                red = 0,
+                green = 176,
+                blue = 255,
+                previewHex = 0xFF00B0FF
+            ),
+            ColorPreset(
+                id = "sunset_crimson",
+                nameBn = "সানসেট ফায়ার",
+                nameEn = "Sunset Crimson",
+                description = "মনোমুগ্ধকর লালচে সূর্যাস্তের আভা",
+                mode = 1,
+                red = 255,
+                green = 61,
+                blue = 0,
+                previewHex = 0xFFFF3D00
+            )
+        )
+    }
+}
+
+data class ClockProfileBackup(
+    val id: String,
+    val name: String,
+    val createdAt: String,
+    val alarms: AlarmConfig = AlarmConfig(),
+    val hourlyChime: HourlyChimeConfig = HourlyChimeConfig(),
+    val trackAssignments: TrackAssignmentsConfig = TrackAssignmentsConfig(),
+    val brightness: BrightnessConfig = BrightnessConfig(),
+    val color: ColorConfig = ColorConfig(),
+    val displaySchedule: DisplayScheduleConfig = DisplayScheduleConfig(),
+    val is12Hour: Boolean = false,
+    val showDate: Boolean = true,
+    val colonBlink: Boolean = true,
+    val trackNames: Map<String, String> = emptyMap()
+)
