@@ -1,4 +1,5 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import java.util.Properties
 
 plugins {
   alias(libs.plugins.android.application)
@@ -7,6 +8,31 @@ plugins {
   alias(libs.plugins.roborazzi)
   alias(libs.plugins.secrets)
   alias(libs.plugins.google.services)
+}
+
+fun getEnvOrProperty(key: String, default: String = ""): String {
+  System.getenv(key)?.let { if (it.isNotBlank()) return it }
+  val envFile = rootProject.file(".env")
+  if (envFile.exists()) {
+    val props = Properties()
+    try {
+      envFile.inputStream().use { stream ->
+        props.load(stream)
+      }
+      props.getProperty(key)?.trim('"', '\'')?.let { if (it.isNotBlank()) return it }
+    } catch (_: Exception) {}
+  }
+  val envExample = rootProject.file(".env.example")
+  if (envExample.exists()) {
+    val props = Properties()
+    try {
+      envExample.inputStream().use { stream ->
+        props.load(stream)
+      }
+      props.getProperty(key)?.trim('"', '\'')?.let { if (it.isNotBlank()) return it }
+    } catch (_: Exception) {}
+  }
+  return default
 }
 
 android {
@@ -21,6 +47,9 @@ android {
     versionName = "1.1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+    val geminiKey = getEnvOrProperty("GEMINI_API_KEY", "dummy_gemini_api_key")
+    buildConfigField("String", "GEMINI_API_KEY", "\"$geminiKey\"")
   }
 
   signingConfigs {
@@ -69,6 +98,7 @@ secrets {
   propertiesFileName = ".env"
   defaultPropertiesFileName = ".env.example"
   ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
+  ignoreList.add("GEMINI_API_KEY")
 }
 
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }

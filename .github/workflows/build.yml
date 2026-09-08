@@ -47,6 +47,12 @@ jobs:
             -dname "CN=Android Debug,O=Android,C=US" \
             -keyalg RSA -keysize 2048 -validity 10000
 
+      - name: Prepare environment configuration
+        run: |
+          if [ ! -f .env ]; then
+            echo 'GEMINI_API_KEY="dummy_gemini_api_key"' > .env
+          fi
+
       - name: Build debug APK
         run: gradle assembleDebug --stacktrace
 
